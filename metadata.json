@@ -1,0 +1,6 @@
+{
+  "name": "Karsa Cendekia Pustaka",
+  "description": "Sistem Informasi Perpustakaan Digital Karsa Cendekia Pustaka - SMP Negeri 26 Purworejo",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
