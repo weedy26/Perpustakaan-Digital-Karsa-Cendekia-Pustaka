@@ -12,6 +12,13 @@ import {
   saveAllToGoogleSheets
 } from "./utils/googleSheets";
 
+// Firebase Sync Utilities
+import {
+  saveToFirestore,
+  loadFromFirestore,
+  testFirestoreConnection
+} from "./utils/firebaseSync";
+
 // Components imports
 import Sidebar from "./components/Sidebar";
 import DashboardView from "./components/DashboardView";
@@ -132,6 +139,10 @@ export default function App() {
   });
   const [isEditingSheetId, setIsEditingSheetId] = useState<boolean>(false);
   const [hasInitialPulled, setHasInitialPulled] = useState<boolean>(false);
+  const [firebaseSyncEnabled, setFirebaseSyncEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("library_firebase_sync_enabled") === "true";
+  });
+  const [hasInitialFirebasePulled, setHasInitialFirebasePulled] = useState<boolean>(false);
   const [showAuthErrorGuide, setShowAuthErrorGuide] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [appConfirm, setAppConfirm] = useState<{
@@ -255,6 +266,10 @@ export default function App() {
     localStorage.setItem("library_sheets_sync_enabled", String(sheetsSyncEnabled));
   }, [sheetsSyncEnabled]);
 
+  useEffect(() => {
+    localStorage.setItem("library_firebase_sync_enabled", String(firebaseSyncEnabled));
+  }, [firebaseSyncEnabled]);
+
   // Debounced auto-save to Google Sheets when data changes
   useEffect(() => {
     if (!sheetsSyncEnabled || !googleToken || !spreadsheetId) return;
@@ -310,6 +325,63 @@ export default function App() {
 
     autoPullData();
   }, [googleToken, spreadsheetId, sheetsSyncEnabled, hasInitialPulled]);
+
+  // Debounced auto-save to Cloud Firestore when data changes
+  useEffect(() => {
+    if (!firebaseSyncEnabled || !googleUser) return;
+
+    const delayDebounceFn = setTimeout(() => {
+      saveToFirestore({
+        classes,
+        books,
+        members,
+        loans,
+        identity,
+        config,
+        templates
+      })
+      .then(() => {
+        console.log("Auto-sync Firebase Firestore completed successfully.");
+      })
+      .catch((err) => {
+        console.warn("Auto-sync Firebase Firestore failed:", err);
+      });
+    }, 2000); // 2 seconds debounce
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [classes, books, members, loans, identity, config, templates, googleUser, firebaseSyncEnabled]);
+
+  // Auto-pull from Cloud Firestore once when connection is established
+  useEffect(() => {
+    if (!firebaseSyncEnabled || !googleUser || hasInitialFirebasePulled) return;
+
+    const autoPullFirebaseData = async () => {
+      try {
+        setIsSyncing(true);
+        const fbData = await loadFromFirestore();
+        
+        let loaded = false;
+        if (fbData.classes) { setClasses(fbData.classes); loaded = true; }
+        if (fbData.books) { setBooks(fbData.books); loaded = true; }
+        if (fbData.members) { setMembers(fbData.members); loaded = true; }
+        if (fbData.loans) { setLoans(fbData.loans); loaded = true; }
+        if (fbData.identity) { setIdentity(fbData.identity); loaded = true; }
+        if (fbData.config) { setConfig(fbData.config); loaded = true; }
+        if (fbData.templates) { setTemplates(fbData.templates); loaded = true; }
+
+        if (loaded) {
+          showToast("Sinkronisasi otomatis: Berhasil memuat data terbaru dari Cloud Firestore!", "info");
+        }
+        setHasInitialFirebasePulled(true);
+      } catch (error: any) {
+        console.warn("Gagal memuat data otomatis dari Cloud Firestore:", error);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    autoPullFirebaseData();
+  }, [googleUser, firebaseSyncEnabled, hasInitialFirebasePulled]);
 
   const handleGoogleSignIn = async () => {
     setIsSyncing(true);
@@ -880,6 +952,21 @@ export default function App() {
             onResetDatabase={handleResetDatabase}
             onRunDelayCheck={handleManualDelayCheck}
             onUpdatePassword={handleUpdatePassword}
+            classes={classes}
+            onUpdateClasses={setClasses}
+            books={books}
+            onUpdateBooks={setBooks}
+            members={members}
+            onUpdateMembers={setMembers}
+            loans={loans}
+            onUpdateLoans={setLoans}
+            onUpdateTemplates={setTemplates}
+            onUpdateSystemConfig={setConfig}
+            googleUser={googleUser}
+            onGoogleSignIn={googleSignIn}
+            onGoogleSignOut={logout}
+            firebaseSyncEnabled={firebaseSyncEnabled}
+            onToggleFirebaseSync={setFirebaseSyncEnabled}
           />
         );
       default:

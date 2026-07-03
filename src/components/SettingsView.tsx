@@ -11,10 +11,20 @@ import {
   BellRing,
   CheckCircle,
   Clock,
-  PhoneCall
+  PhoneCall,
+  Cloud,
+  CloudLightning,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  CloudDownload,
+  CloudUpload,
+  Server
 } from "lucide-react";
-import { LibraryIdentity, WaTemplate, SystemConfig } from "../types";
+import { LibraryIdentity, WaTemplate, SystemConfig, ClassItem, Book, Member, Loan } from "../types";
 import LibraryLogo from "./LibraryLogo";
+import { saveToFirestore, loadFromFirestore, testFirestoreConnection } from "../utils/firebaseSync";
+import firebaseConfig from "../../firebase-applet-config.json";
 
 interface SettingsViewProps {
   identity: LibraryIdentity;
@@ -26,6 +36,23 @@ interface SettingsViewProps {
   onResetDatabase: () => void;
   onRunDelayCheck: () => void;
   onUpdatePassword: (oldPass: string, newPass: string) => boolean;
+  
+  // New props for Firebase Sync
+  classes: ClassItem[];
+  onUpdateClasses: (classes: ClassItem[]) => void;
+  books: Book[];
+  onUpdateBooks: (books: Book[]) => void;
+  members: Member[];
+  onUpdateMembers: (members: Member[]) => void;
+  loans: Loan[];
+  onUpdateLoans: (loans: Loan[]) => void;
+  onUpdateTemplates: (templates: WaTemplate[]) => void;
+  onUpdateSystemConfig: (config: SystemConfig) => void;
+  googleUser: any;
+  onGoogleSignIn: () => void;
+  onGoogleSignOut: () => void;
+  firebaseSyncEnabled: boolean;
+  onToggleFirebaseSync: (enabled: boolean) => void;
 }
 
 export default function SettingsView({
@@ -37,9 +64,24 @@ export default function SettingsView({
   onUpdateConfig,
   onResetDatabase,
   onRunDelayCheck,
-  onUpdatePassword
+  onUpdatePassword,
+  classes,
+  onUpdateClasses,
+  books,
+  onUpdateBooks,
+  members,
+  onUpdateMembers,
+  loans,
+  onUpdateLoans,
+  onUpdateTemplates,
+  onUpdateSystemConfig,
+  googleUser,
+  onGoogleSignIn,
+  onGoogleSignOut,
+  firebaseSyncEnabled,
+  onToggleFirebaseSync
 }: SettingsViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"IDENTITAS" | "WA" | "SISTEM" | "AKUN">("IDENTITAS");
+  const [activeSubTab, setActiveSubTab] = useState<"IDENTITAS" | "WA" | "SISTEM" | "AKUN" | "FIREBASE">("IDENTITAS");
 
   // Identitas Form State
   const [logo, setLogo] = useState(identity.logo);
@@ -76,6 +118,86 @@ export default function SettingsView({
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Firebase Synchronization States
+  const [isFirebaseSyncing, setIsFirebaseSyncing] = useState(false);
+  const [isTestingConn, setIsTestingConn] = useState(false);
+  const [connStatus, setConnStatus] = useState<"idle" | "connected" | "failed">("idle");
+  const [firebaseMessage, setFirebaseMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
+
+  const handleTestConnection = async () => {
+    setIsTestingConn(true);
+    setFirebaseMessage(null);
+    try {
+      const ok = await testFirestoreConnection();
+      if (ok) {
+        setConnStatus("connected");
+        setFirebaseMessage({ text: "Koneksi ke Firebase Firestore berhasil terjalin!", type: "success" });
+      } else {
+        setConnStatus("failed");
+        setFirebaseMessage({ text: "Gagal menghubungkan ke Firebase Firestore. Pastikan konfigurasi valid dan Anda sudah login.", type: "error" });
+      }
+    } catch (e: any) {
+      setConnStatus("failed");
+      setFirebaseMessage({ text: `Kesalahan koneksi: ${e.message || e}`, type: "error" });
+    } finally {
+      setIsTestingConn(false);
+    }
+  };
+
+  const handleBackupToFirestore = async () => {
+    if (!googleUser) {
+      setFirebaseMessage({ text: "Silakan login menggunakan Google Sign-In terlebih dahulu untuk melakukan backup.", type: "error" });
+      return;
+    }
+    setIsFirebaseSyncing(true);
+    setFirebaseMessage({ text: "Memulai proses pencadangan (backup) ke Cloud Firestore...", type: "info" });
+    try {
+      await saveToFirestore({
+        classes,
+        books,
+        members,
+        loans,
+        identity,
+        config,
+        templates
+      });
+      setFirebaseMessage({ text: "Seluruh database berhasil dicadangkan ke Cloud Firestore dengan aman!", type: "success" });
+    } catch (e: any) {
+      console.error("Backup failed", e);
+      setFirebaseMessage({ text: `Gagal mencadangkan data: ${e.message || e}`, type: "error" });
+    } finally {
+      setIsFirebaseSyncing(false);
+    }
+  };
+
+  const handleRestoreFromFirestore = async () => {
+    setIsFirebaseSyncing(true);
+    setFirebaseMessage({ text: "Mengunduh dan memulihkan (restore) data dari Cloud Firestore...", type: "info" });
+    try {
+      const data = await loadFromFirestore();
+      
+      let restoreCount = 0;
+      if (data.classes) { onUpdateClasses(data.classes); restoreCount++; }
+      if (data.books) { onUpdateBooks(data.books); restoreCount++; }
+      if (data.members) { onUpdateMembers(data.members); restoreCount++; }
+      if (data.loans) { onUpdateLoans(data.loans); restoreCount++; }
+      if (data.identity) { onUpdateIdentity(data.identity); restoreCount++; }
+      if (data.config) { onUpdateSystemConfig(data.config); restoreCount++; }
+      if (data.templates) { onUpdateTemplates(data.templates); restoreCount++; }
+
+      if (restoreCount > 0) {
+        setFirebaseMessage({ text: "Database berhasil dipulihkan dari Cloud Firestore ke kondisi penyimpanan cloud terakhir!", type: "success" });
+      } else {
+        setFirebaseMessage({ text: "Peringatan: Tidak ditemukan data cadangan yang valid di Cloud Firestore Anda.", type: "error" });
+      }
+    } catch (e: any) {
+      console.error("Restore failed", e);
+      setFirebaseMessage({ text: `Gagal memulihkan data: ${e.message || e}`, type: "error" });
+    } finally {
+      setIsFirebaseSyncing(false);
+    }
+  };
 
   const handleUpdateTemplateType = (type: "PINJAM" | "TERLAMBAT") => {
     setSelectedTemplateType(type);
@@ -245,6 +367,17 @@ export default function SettingsView({
         >
           <User className="w-4 h-4" />
           <span>AKUN ADMIN</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab("FIREBASE")}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeSubTab === "FIREBASE"
+              ? "bg-slate-950 text-emerald-400 border border-slate-800/80"
+              : "text-slate-400 hover:text-slate-300"
+          }`}
+        >
+          <Cloud className="w-4 h-4" />
+          <span>FIREBASE SYNC</span>
         </button>
       </div>
 
@@ -650,6 +783,211 @@ export default function SettingsView({
             </button>
           </div>
         </form>
+      )}
+
+      {/* Firebase Sync Tab */}
+      {activeSubTab === "FIREBASE" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-150">
+          
+          {/* Left Column: Connection Info & Auth */}
+          <div className="lg:col-span-5 bg-slate-900 rounded-3xl border border-slate-800/80 p-6 shadow-sm space-y-6">
+            <h3 className="font-extrabold text-white text-[15px] border-b pb-2 border-slate-800 flex items-center space-x-2">
+              <Server className="w-4 h-4 text-emerald-400" />
+              <span>Status Koneksi Firebase</span>
+            </h3>
+
+            <div className="space-y-4">
+              {/* Firestore database metadata info */}
+              <div className="p-4 bg-slate-950 border border-slate-800/60 rounded-2xl space-y-2.5 text-xs">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-800/60">
+                  <span className="text-slate-400 font-bold">Project ID:</span>
+                  <span className="font-mono text-[11px] text-slate-200">{firebaseConfig.projectId}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-800/60">
+                  <span className="text-slate-400 font-bold">Database ID:</span>
+                  <span className="font-mono text-[11px] text-slate-200">{(firebaseConfig as any).firestoreDatabaseId || "(default)"}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-bold">Layanan Cloud:</span>
+                  <span className="text-emerald-400 font-bold flex items-center space-x-1">
+                    <span>Firestore Active</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Authentication Status Container */}
+              <div className="p-5 rounded-2xl border bg-slate-950/60 flex flex-col space-y-3.5 border-slate-800/80">
+                <div className="flex items-center space-x-3">
+                  {googleUser ? (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                      <span className="text-xs font-bold text-slate-200">Akun Terhubung</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                      <span className="text-xs font-bold text-slate-400">Belum Terhubung</span>
+                    </>
+                  )}
+                </div>
+
+                {googleUser ? (
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Anda masuk sebagai <strong className="text-slate-200">{googleUser.email}</strong>. Data akan disimpan atas akun Anda ini.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onGoogleSignOut}
+                      className="w-full inline-flex items-center justify-center space-x-1.5 bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-950 hover:bg-rose-950/20 text-xs font-bold py-2.5 rounded-xl cursor-pointer transition-all"
+                    >
+                      <span>Sign Out dari Google</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Sesuai Aturan Keamanan Firebase, Anda wajib login dengan Google Sign-In untuk memiliki izin tulis ke database cloud Firestore.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onGoogleSignIn}
+                      className="w-full inline-flex items-center justify-center space-x-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer shadow-md shadow-emerald-950/20 transition-all"
+                    >
+                      <span>Hubungkan Akun Google</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Connection Tester */}
+              <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={isTestingConn}
+                  className="w-full inline-flex items-center justify-center space-x-2 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-300 font-bold text-xs py-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTestingConn ? "animate-spin" : ""}`} />
+                  <span>{isTestingConn ? "Memeriksa..." : "Uji Koneksi Firestore"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Actions */}
+          <div className="lg:col-span-7 bg-slate-900 rounded-3xl border border-slate-800/80 p-6 shadow-sm flex flex-col justify-between">
+            <div className="space-y-5">
+              <h3 className="font-extrabold text-white text-[15px] border-b pb-2 border-slate-800 flex items-center space-x-2">
+                <CloudLightning className="w-4 h-4 text-emerald-400" />
+                <span>Operasi Sinkronisasi Cloud</span>
+              </h3>
+
+              {/* Status/Notification messages */}
+              {firebaseMessage && (
+                <div className={`p-4 rounded-2xl flex items-start space-x-3 text-xs border ${
+                  firebaseMessage.type === "success" 
+                    ? "bg-emerald-950/30 border-emerald-900/40 text-emerald-400" 
+                    : firebaseMessage.type === "error"
+                    ? "bg-rose-950/30 border-rose-900/40 text-rose-400"
+                    : "bg-blue-950/30 border-blue-900/40 text-blue-400"
+                }`}>
+                  <span className="text-sm">
+                    {firebaseMessage.type === "success" ? "✓" : firebaseMessage.type === "error" ? "⚠" : "ℹ"}
+                  </span>
+                  <p className="font-semibold leading-relaxed">{firebaseMessage.text}</p>
+                </div>
+              )}
+
+              {/* Real-time Auto Sync Toggle */}
+              <div className="p-4 bg-slate-950 border border-slate-800/60 rounded-2xl flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                    <CloudLightning className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Sinkronisasi Otomatis (Real-time Cloud Sync)</span>
+                  </h4>
+                  <p className="text-[10px] text-slate-400 leading-relaxed max-w-sm">
+                    Menyimpan perubahan secara otomatis ke Cloud Firestore setiap kali data ditambahkan, diubah, atau dihapus.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!googleUser) {
+                      setFirebaseMessage({ text: "Harap hubungkan akun Google Anda terlebih dahulu untuk mengaktifkan sinkronisasi otomatis.", type: "error" });
+                      return;
+                    }
+                    onToggleFirebaseSync(!firebaseSyncEnabled);
+                  }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    firebaseSyncEnabled ? "bg-emerald-600" : "bg-slate-800"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      firebaseSyncEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* Backup Box */}
+                <div className="p-5 bg-slate-950 border border-slate-800/60 rounded-2xl flex flex-col justify-between space-y-4">
+                  <div className="space-y-1.5">
+                    <h4 className="font-extrabold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <CloudUpload className="w-4 h-4 text-emerald-400" />
+                      <span>Backup ke Cloud</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                      Unggah seluruh data lokal saat ini (kelas, buku, anggota, peminjaman, & pengaturan) untuk disimpan aman di Cloud Firestore.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBackupToFirestore}
+                    disabled={isFirebaseSyncing || !googleUser}
+                    className="w-full inline-flex items-center justify-center space-x-1.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2.5 rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-950/10 disabled:opacity-50"
+                  >
+                    <span>Mulai Backup</span>
+                  </button>
+                </div>
+
+                {/* Restore Box */}
+                <div className="p-5 bg-slate-950 border border-slate-800/60 rounded-2xl flex flex-col justify-between space-y-4">
+                  <div className="space-y-1.5">
+                    <h4 className="font-extrabold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <CloudDownload className="w-4 h-4 text-sky-400" />
+                      <span>Restore dari Cloud</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                      Unduh data cadangan terakhir yang disimpan di Cloud Firestore untuk menimpa dan memulihkan data lokal Anda secara penuh.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRestoreFromFirestore}
+                    disabled={isFirebaseSyncing}
+                    className="w-full inline-flex items-center justify-center space-x-1.5 bg-slate-900 border border-slate-800 text-sky-400 hover:bg-slate-800 font-bold text-xs py-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <span>Mulai Restore</span>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+            <div className="pt-4 mt-6 border-t border-slate-800/80 text-[10px] text-slate-500 font-semibold uppercase tracking-wider flex justify-between items-center">
+              <span>Firebase Database: Firestore</span>
+              <span className="flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Active</span>
+              </span>
+            </div>
+          </div>
+
+        </div>
       )}
 
       {/* Database Reset Confirmation Modal */}

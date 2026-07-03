@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "ClassItem": {
+      "title": "ClassItem",
+      "description": "Schema representing a school class",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "homeroomTeacher": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Book": {
+      "title": "Book",
+      "description": "Schema representing a library book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "year": { "type": "number" },
+        "category": { "type": "string" },
+        "qty": { "type": "number" },
+        "availableQty": { "type": "number" },
+        "coverImage": { "type": "string" }
+      },
+      "required": ["id", "title", "qty", "availableQty"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Schema representing a library member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "classId": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "registerDate": { "type": "string" }
+      },
+      "required": ["id", "name", "classId"]
+    },
+    "Loan": {
+      "title": "Loan",
+      "description": "Schema representing a book loan record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "loanDate": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "returnDate": { "type": "string" },
+        "status": { "type": "string" },
+        "fineAmount": { "type": "number" }
+      },
+      "required": ["id", "memberId", "bookId", "loanDate", "dueDate", "status"]
+    },
+    "LibraryIdentity": {
+      "title": "LibraryIdentity",
+      "description": "Schema representing library identity configurations",
+      "type": "object",
+      "properties": {
+        "logo": { "type": "string" },
+        "libraryName": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "address": { "type": "string" },
+        "officerName": { "type": "string" },
+        "officerNip": { "type": "string" },
+        "officerPhone": { "type": "string" },
+        "schoolYear": { "type": "string" }
+      },
+      "required": ["libraryName", "schoolName"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Schema representing system general configurations",
+      "type": "object",
+      "properties": {
+        "finePerDay": { "type": "number" },
+        "maxLoanDays": { "type": "number" }
+      },
+      "required": ["finePerDay", "maxLoanDays"]
+    },
+    "WaTemplate": {
+      "title": "WaTemplate",
+      "description": "Schema representing WhatsApp notification templates",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "required": ["type", "text"]
+    }
+  },
+  "firestore": {
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/ClassItem" },
+      "description": "Collection of school classes"
+    },
+    "/books/{bookId}": {
+      "schema": { "$ref": "#/entities/Book" },
+      "description": "Collection of books in the library"
+    },
+    "/members/{memberId}": {
+      "schema": { "$ref": "#/entities/Member" },
+      "description": "Collection of library members"
+    },
+    "/loans/{loanId}": {
+      "schema": { "$ref": "#/entities/Loan" },
+      "description": "Collection of book loans"
+    },
+    "/config/identity": {
+      "schema": { "$ref": "#/entities/LibraryIdentity" },
+      "description": "Single document holding library identity info"
+    },
+    "/config/system": {
+      "schema": { "$ref": "#/entities/SystemConfig" },
+      "description": "Single document holding system fine rate configurations"
+    },
+    "/templates/{templateId}": {
+      "schema": { "$ref": "#/entities/WaTemplate" },
+      "description": "Collection of WhatsApp notification templates"
+    }
+  }
+}
